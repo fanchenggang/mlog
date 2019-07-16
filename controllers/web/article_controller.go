@@ -89,19 +89,13 @@ func (this *ArticleController) PostCreate() *simple.JsonResult {
 	if tagId <= 0 {
 		return simple.ErrorMsg("请选择标签")
 	}
-	if len(title) == 0 {
-		return simple.ErrorMsg("请输入标题")
-	}
-	if len(content) == 0 {
-		return simple.ErrorMsg("请填写文章内容")
-	}
-
 	tag := services.TagService.Get(tagId)
 	if tag == nil {
 		return simple.ErrorMsg("标签不存在")
 	}
 
-	article, err := services.ArticleService.Publish(currentUser.Id, title, summary, content, model.ArticleContentTypeMarkdown, 0, []int64{tagId}, "")
+	article, err := services.ArticleService.Publish(currentUser.Id, title, summary, content,
+		model.ArticleContentTypeMarkdown, 0, []int64{tagId}, "", false)
 	if err != nil {
 		return simple.ErrorMsg(err.Error())
 	}
@@ -216,6 +210,20 @@ func (this *ArticleController) PostFavoriteBy(articleId int64) *simple.JsonResul
 	return simple.Success()
 }
 
+// 跳转到文章的原始链接
+func (this *ArticleController) GetRedirectBy(articleId int64) {
+	article := services.ArticleService.Get(articleId)
+	if article == nil || article.Status != model.ArticleStatusPublished {
+		this.Ctx.StatusCode(404)
+		return
+	}
+	if article.Share && len(article.SourceUrl) > 0 {
+		this.Ctx.Redirect(article.SourceUrl, iris.StatusFound)
+	} else {
+		this.Ctx.Redirect("/article/"+strconv.FormatInt(articleId, 10), iris.StatusFound)
+	}
+}
+
 // 微信采集发布接口
 func (this *ArticleController) PostWxpublish() *simple.JsonResult {
 	token := this.Ctx.FormValue("token")
@@ -237,8 +245,6 @@ func (this *ArticleController) PostWxpublish() *simple.JsonResult {
 	if err != nil {
 		return simple.ErrorMsg(err.Error())
 	}
-	//清理首页文章列表缓存
-	cache.Cache.Invalidate(cache.IndexArticleCacheKey)
 	return simple.NewEmptyRspBuilder().Put("id", t.Id).JsonResult()
 }
 

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"errors"
 	"github.com/emirpasic/gods/sets/hashset"
 	"github.com/mlogclub/mlog/repositories"
 	"github.com/mlogclub/mlog/services/cache"
@@ -91,8 +92,27 @@ func (this *articleService) GetTagArticles(tagId int64, page int) (articles []mo
 
 // 发布文章
 func (this *articleService) Publish(userId int64, title, summary, content, contentType string, categoryId int64,
-	tagIds []int64, sourceUrl string) (article *model.Article, err error) {
+	tagIds []int64, sourceUrl string, share bool) (article *model.Article, err error) {
 
+	title = strings.TrimSpace(title)
+	summary = strings.TrimSpace(summary)
+	content = strings.TrimSpace(content)
+
+	if len(title) == 0 {
+		return nil, errors.New("标题不能为空")
+	}
+	if share { // 如果是分享的内容，必须有Summary和SourceUrl
+		if len(summary) == 0 {
+			return nil, errors.New("分享内容摘要不能为空")
+		}
+		if len(sourceUrl) == 0 {
+			return nil, errors.New("分享内容原文链接不能为空")
+		}
+	} else {
+		if len(content) == 0 {
+			return nil, errors.New("内容不能为空")
+		}
+	}
 	article = &model.Article{
 		UserId:      userId,
 		Title:       title,
@@ -101,6 +121,7 @@ func (this *articleService) Publish(userId int64, title, summary, content, conte
 		ContentType: contentType,
 		CategoryId:  categoryId,
 		Status:      model.ArticleStatusPublished,
+		Share:       share,
 		SourceUrl:   sourceUrl,
 		CreateTime:  simple.NowTimestamp(),
 		UpdateTime:  simple.NowTimestamp(),
@@ -141,6 +162,8 @@ func (this *articleService) Publish(userId int64, title, summary, content, conte
 	})
 
 	if err == nil {
+		// 清理首页文章列表缓存
+		cache.ArticleCache.InvalidateIndexList()
 		utils.BaiduUrlPush([]string{utils.BuildArticleUrl(article.Id)})
 	}
 	return
